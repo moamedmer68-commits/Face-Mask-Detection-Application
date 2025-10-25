@@ -1,5 +1,5 @@
 import os
-os.system("pip istall cv2")
+os.system("pip install opencv-python")
 
 import streamlit as st
 import cv2
@@ -48,5 +48,6 @@ if upload is not None:
         
 
 st.image(image)
+
 
 
