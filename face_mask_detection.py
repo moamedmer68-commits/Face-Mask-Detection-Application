@@ -9,7 +9,7 @@ from tensorflow.keras.models import load_model
 st.title('Face Mask Detection Application')
 
 #load h5 model
-model = load_model(r"C:\Users\HP\Downloads\face_mask_detection_model.h5")
+model = load_model("face_mask_detection_model.h5")
 
 upload = st.file_uploader('Please, Upload an Image', type = ['png', 'jpeg', 'jpg'])
 
@@ -48,6 +48,7 @@ if upload is not None:
         
 
 st.image(image)
+
 
 
 
