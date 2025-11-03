@@ -1,4 +1,7 @@
 import os
+os.system("pip install gdown")
+os.system("pip install opencv-python")
+
 import gdown
 import streamlit as st
 import cv2
@@ -6,7 +9,6 @@ import numpy as np
 from tensorflow.keras.models import load_model
 
 st.title('Face Mask Detection Application')
-os.system("pip install opencv-python")
 
 # Model local filename
 model_path = "face_mask_detection_model.h5"
@@ -78,3 +80,4 @@ if upload is not None:
         cv2.rectangle(image, (x, y), (x + w, y + h), color, 2)
 
     st.image(image, use_column_width=True)
+
