@@ -1,83 +1,84 @@
-import os
-os.system("pip install gdown")
-os.system("pip install opencv-python")
-
-import gdown
 import streamlit as st
 import cv2
 import numpy as np
-from tensorflow.keras.models import load_model
+from transformers import AutoProcessor, AutoModelForImageClassification
+import torch
 
-st.title('Face Mask Detection Application')
+st.title("Face Mask Detection — HuggingFace Model")
 
-# Model local filename
-model_path = "face_mask_detection_model.h5"
+# Load model from Hugging Face (cached to avoid downloading every run)
+@st.cache_resource
+def load_hf_model():
+    # Load processor and model from HF Hub
+    processor = AutoProcessor.from_pretrained("prithivMLmods/Face-Mask-Detection")
+    model = AutoModelForImageClassification.from_pretrained("prithivMLmods/Face-Mask-Detection")
+    return processor, model
 
-# If model file does not exist locally -> download it from Google Drive
-if not os.path.exists(model_path):
-    # IMPORTANT: replace this with the actual FILE ID of the MODEL (.h5) not the folder ID
-    file_id = "1PRgcbaVB7jHSD6_HhQHJW9fwZ0VgOWIS"
-    url = f"https://drive.google.com/uc?id={file_id}"
+processor, model = load_hf_model()
+st.success("Model loaded successfully from Hugging Face")
 
-    st.write("Downloading model file from Google Drive...")
-    gdown.download(url, model_path, quiet=False)
-
-# Load model
-model = load_model(model_path)
-st.success("Model loaded successfully")
-
-# File Uploader
-upload = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"])
+# File uploader for image input
+uploaded_img = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"])
 
 def detect_and_predict_mask(image):
+    """
+    Detect faces using OpenCV Haar Cascade,
+    then run each detected face through the HuggingFace model.
+    """
     # Load Haar Cascade face detector
     face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
-    # Detect faces in the frame
-    faces = face_cascade.detectMultiScale(image, scaleFactor=1.1)
+    # Convert to grayscale for face detection
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-    predictions = []
+    # Detect faces
+    faces = face_cascade.detectMultiScale(gray, 1.1, 4)
 
+    results = []
     for (x, y, w, h) in faces:
-        # Crop face region
-        face = image[y:y+h, x:x+w]
+        # Crop the face region
+        face_img = image[y:y+h, x:x+w]
 
-        # Convert BGR -> RGB
-        face = cv2.cvtColor(face, cv2.COLOR_BGR2RGB)
+        # Prepare input for the Hugging Face model
+        inputs = processor(images=face_img, return_tensors="pt")
 
-        # Resize to model input size
-        face = cv2.resize(face, (128, 128))
+        # Run the model (no gradients needed)
+        with torch.no_grad():
+            logits = model(**inputs).logits
 
-        # Normalize
-        face = np.array(face) / 255.0
+        # Get the predicted class ID
+        predicted_id = torch.argmax(logits, dim=-1).item()
 
-        # Add batch dimension
-        face = np.expand_dims(face, axis=0)
+        # Convert ID to readable label
+        label = model.config.id2label[predicted_id]
 
-        # Predict
-        predictions.append(model.predict(face))
-    
-    return faces, predictions
+        results.append({"box": (x, y, w, h), "label": label})
 
-if upload is not None:
+    return results
+
+
+if uploaded_img:
     # Read uploaded image
-    file_bytes = np.asarray(bytearray(upload.read()), dtype=np.uint8)
+    file_bytes = np.asarray(bytearray(uploaded_img.read()), dtype=np.uint8)
     image = cv2.imdecode(file_bytes, 1)
-    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-    faces, preds = detect_and_predict_mask(image)
+    # Detect faces + predict mask or no mask
+    detections = detect_and_predict_mask(image)
 
-    # Draw result on image
-    for i, (x, y, w, h) in enumerate(faces):
-        (mask, withoutMask) = preds[i][0]
-        label = "Mask" if mask > withoutMask else "No Mask"
+    # Draw bounding boxes and labels
+    for det in detections:
+        x, y, w, h = det["box"]
+        label = det["label"]
 
-        # Green for mask, red for no mask
-        color = (0, 255, 0) if label == "Mask" else (255, 0, 0)
+        # Green if mask detected, red if no mask
+        color = (0, 255, 0) if "Mask" in label else (0, 0, 255)
 
+        cv2.rectangle(image, (x, y), (x + w, y + h), color, 2)
         cv2.putText(image, label, (x, y - 10),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
-        cv2.rectangle(image, (x, y), (x + w, y + h), color, 2)
 
-    st.image(image, use_column_width=True)
+    # Display final image
+    st.image(image, channels="BGR", use_column_width=True)
+
+
 
